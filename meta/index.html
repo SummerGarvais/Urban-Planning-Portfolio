@@ -10,10 +10,16 @@
 </head>
 <body>
     <h1>Meta</h1>
-    <p>This page includes stats about the information on this website.</p>
-    <div id="stats"></div>
+    <p>This page visualizes website changes over time.</p>
     <h2>Commits by time of day</h2>
+    <div>
+        <label>Show website commits until:
+            <input type = "range" min = 0 max = 100 id="commit-progress" value="100">
+            <time id="commit-time" style ="margin-left: auto;"></time>
+        </label>
+    </div>
     <div id="chart"></div>
+    <div id="stats"></div>
 
     <p id="selection-count">No commits selected</p>
     <dl id="language-breakdown" class="stats"></dl>
