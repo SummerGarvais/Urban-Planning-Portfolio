@@ -171,7 +171,7 @@ function renderScatterPlot(data, commits) {
         .domain([0, 24])
         .range([usableArea.bottom, usableArea.top]);
 
-    // Gridlines (before axes)
+    // Gridlines
     const gridlines = svg
         .append('g')
         .attr('class', 'gridlines')
@@ -181,12 +181,15 @@ function renderScatterPlot(data, commits) {
         d3.axisLeft(yScale).tickFormat('').tickSize(-usableArea.width)
     );
 
-    // Axes
+
+    // X-axis — note the added class
     svg
         .append('g')
+        .attr('class', 'x-axis')
         .attr('transform', `translate(0, ${usableArea.bottom})`)
         .call(d3.axisBottom(xScale));
 
+    // Y-axis
     svg
         .append('g')
         .attr('transform', `translate(${usableArea.left}, 0)`)
@@ -195,7 +198,7 @@ function renderScatterPlot(data, commits) {
                 .tickFormat((d) => String(d % 24).padStart(2, '0') + ':00')
         );
 
-    // Dots
+    // Dots — note the added class
     const sortedCommits = d3.sort(commits, (d) => -d.totalLines);
     const [minLines, maxLines] = d3.extent(commits, (d) => d.totalLines);
     const rScale = d3.scaleSqrt().domain([minLines, maxLines]).range([2, 30]);
@@ -227,6 +230,64 @@ function renderScatterPlot(data, commits) {
     svg.selectAll('.dots, .overlay ~ *').raise();
 }
 
+function updateScatterPlot(data, commits) {
+  const width = 1000;
+  const height = 600;
+  const margin = { top: 10, right: 10, bottom: 30, left: 20 };
+  const usableArea = {
+    top: margin.top,
+    right: width - margin.right,
+    bottom: height - margin.bottom,
+    left: margin.left,
+    width: width - margin.left - margin.right,
+    height: height - margin.top - margin.bottom,
+  };
+
+  const svg = d3.select('#chart svg');
+
+  xScale = d3
+    .scaleTime()
+    .domain(d3.extent(commits, (d) => d.datetime))
+    .range([usableArea.left, usableArea.right])
+    .nice();
+
+  yScale = d3
+    .scaleLinear()
+    .domain([0, 24])
+    .range([usableArea.bottom, usableArea.top]);
+
+  // Remove and redraw x-axis
+  const xAxisGroup = svg.select('g.x-axis');
+  xAxisGroup.selectAll('*').remove();
+  xAxisGroup.call(d3.axisBottom(xScale));
+
+  const [minLines, maxLines] = d3.extent(commits, (d) => d.totalLines);
+  const rScale = d3.scaleSqrt().domain([minLines, maxLines]).range([2, 30]);
+
+  const sortedCommits = d3.sort(commits, (d) => -d.totalLines);
+  const dots = svg.select('g.dots');
+
+  dots
+    .selectAll('circle')
+    .data(sortedCommits)
+    .join('circle')
+    .attr('cx', (d) => xScale(d.datetime))
+    .attr('cy', (d) => yScale(d.hourFrac))
+    .attr('r', (d) => rScale(d.totalLines))
+    .attr('fill', 'steelblue')
+    .style('fill-opacity', 0.7)
+    .on('mouseenter', (event, commit) => {
+      d3.select(event.currentTarget).style('fill-opacity', 1);
+      renderTooltipContent(commit);
+      updateTooltipVisibility(true);
+      updateTooltipPosition(event);
+    })
+    .on('mouseleave', (event) => {
+      d3.select(event.currentTarget).style('fill-opacity', 0.7);
+      updateTooltipVisibility(false);
+    });
+}
+
 let data = await loadData();
 commits = processCommits(data);
 renderCommitInfo(data, commits);
@@ -239,6 +300,8 @@ renderScatterPlot(data, commits);
 //
 //
 
+
+// Step 1.1
 let commitProgress = 100;
 
 
@@ -252,6 +315,11 @@ let timeScale = d3
 
 let commitMaxTime = timeScale.invert(commitProgress);
 
+
+// Creating a variable that allows us to filter commits
+let filteredCommits = commits;
+
+
 // Adds the appropriate time to the slider and updates the commit variables
 function onTimeSliderChange() {
     commitProgress = Number(document.getElementById('commit-progress').value);
@@ -260,12 +328,17 @@ function onTimeSliderChange() {
         dateStyle: 'long',
         timeStyle: 'short',
     })
+    filteredCommits = commits.filter((d) => d.datetime <= commitMaxTime);
+    updateScatterPlot(data, filteredCommits); // not renderScatterPlot
 }
 
 
 // Attaching a listener so we can call our onTimeSliderChange function
 document.getElementById('commit-progress').addEventListener('input', onTimeSliderChange);
 onTimeSliderChange(); // intializing the slider
+
+
+
 
 
 
