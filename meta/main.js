@@ -1,3 +1,5 @@
+import scrollama from 'https://cdn.jsdelivr.net/npm/scrollama@3.2.0/+esm';
+
 import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7.9.0/+esm';
 
 
@@ -35,9 +37,10 @@ function processCommits(data) {
                 writable: false,
                 configurable: true,
                 enumerable: false,
-            });
+        }) 
             return ret;
-        });
+        })
+        .sort((a, b) => a.datetime - b.datetime);
 }
 
 function renderCommitInfo(data, commits) {
@@ -85,7 +88,7 @@ function updateTooltipPosition(event) {
 }
 
 // These are declared outside renderScatterPlot so brushed() can access them
-let xScale, yScale, commits;
+let xScale, yScale, commits, filteredCommits;
 
 function isCommitSelected(selection, commit) {
     if (!selection) return false;
@@ -207,7 +210,7 @@ function renderScatterPlot(data, commits) {
 
     dots
         .selectAll('circle')
-        .data(sortedCommits)
+        .data(sortedCommits, (d) => d.id)
         .join('circle')
         .attr('cx', (d) => xScale(d.datetime))
         .attr('cy', (d) => yScale(d.hourFrac))
@@ -269,7 +272,7 @@ function updateScatterPlot(data, commits) {
 
   dots
     .selectAll('circle')
-    .data(sortedCommits)
+    .data(sortedCommits, (d) => d.id)
     .join('circle')
     .attr('cx', (d) => xScale(d.datetime))
     .attr('cy', (d) => yScale(d.hourFrac))
@@ -315,9 +318,46 @@ let timeScale = d3
 
 let commitMaxTime = timeScale.invert(commitProgress);
 
+let colors = d3.scaleOrdinal(d3.schemeTableau10);
 
 // Creating a variable that allows us to filter commits
-let filteredCommits = commits;
+function updateFileDisplay(filteredCommits){
+    let lines = filteredCommits.flatMap((d) => d.lines);
+    let files = d3
+        .groups(lines, (d) => d.file)
+        .map(([name, lines]) => {
+            return { name, lines };
+        })
+        .sort((a, b) => b.lines.length - a.lines.length);
+
+
+    let filesContainer = d3
+        .select('#files')
+        .selectAll('div')
+        .data(files, (d) => d.name)
+        .join(
+            // This code only runs when the div is initially rendered
+            (enter) =>
+            enter.append('div').call((div) => {
+                div.append('dt').append('code');
+                div.append('dd');
+            }),
+        )
+    
+
+
+
+    // This code updates the div info
+    filesContainer.select('dt > code').text((d) => d.name);
+    filesContainer
+        .select('dd')
+        .selectAll('div')
+        .data((d) => d.lines)
+        .join('div')
+        .attr('class', 'loc')
+        .attr('style', (d) => `--color: ${colors(d.type)}`);
+    
+}
 
 
 // Adds the appropriate time to the slider and updates the commit variables
@@ -330,6 +370,7 @@ function onTimeSliderChange() {
     })
     filteredCommits = commits.filter((d) => d.datetime <= commitMaxTime);
     updateScatterPlot(data, filteredCommits); // not renderScatterPlot
+    updateFileDisplay(filteredCommits)
 }
 
 
@@ -338,7 +379,42 @@ document.getElementById('commit-progress').addEventListener('input', onTimeSlide
 onTimeSliderChange(); // intializing the slider
 
 
+d3.select('#scatter-story')
+  .selectAll('.step')
+  .data(commits)
+  .join('div')
+  .attr('class', 'step')
+  .html(
+    (d, i) => `
+		On ${d.datetime.toLocaleString('en', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+    })},
+		<a href="${d.url}" target="_blank">${
+      i > 0 ? '' : 'I made my first commit!'
+    }</a>
+		I edited ${d.totalLines} lines across ${
+      d3.rollups(
+        d.lines,
+        (D) => D.length,
+        (d) => d.file,
+      ).length
+    } files.
+	`,
+  );
 
+function onStepEnter(response) {
+  commitMaxTime = response.element.__data__.datetime;
+  filteredCommits = commits.filter((d) => d.datetime <= commitMaxTime);
+  updateScatterPlot(data, filteredCommits);
+  updateFileDisplay(filteredCommits);
+}
 
-
+const scroller = scrollama();
+scroller
+  .setup({
+    container: '#scrolly-1',
+    step: '#scrolly-1 .step',
+  })
+  .onStepEnter(onStepEnter);
 
